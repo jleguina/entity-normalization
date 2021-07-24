@@ -50,7 +50,7 @@ def normalise(entity_list: list, database: dict, category: str = "companies") ->
 
     # Else...
     for item in entity_list:
-        # If category is empty append first Wikipedia candidate  
+        # If category is empty append first Wikipedia candidate
         if not bool(database[category].keys()):
             candidates = wikify(item)
             database[category][item] = candidates[0]
