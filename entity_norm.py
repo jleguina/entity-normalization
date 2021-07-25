@@ -4,9 +4,10 @@ import pprint
 
 def init_database(categories: list) -> dict:
     """
-    Initialises database of normalised entities
+    Initialises database of normalised entities.
+
     :param categories: set of entity categories present in the database
-    :return: database dictionary
+    :return kb: database dictionary of categories, where each category is itself a dictionary
     """
     kb = {}
     for category in categories:
@@ -17,6 +18,7 @@ def init_database(categories: list) -> dict:
 def wikify(query: str, N_candidates: int = 1, threshold: int = 20) -> list:
     """
     Wikify performs a Google search given a query to find the first suggested Wikipedia article.
+
     :param query: string containing queried term
     :param N_candidates: number of candidate Wikipedia entities to be saved. Useful if context is given.
     :param threshold: number of Google results before refining search
@@ -78,6 +80,18 @@ def normalise(entity_list: list, database: dict, category: str = "companies") ->
                 print(item, "has been added to the", category, "database")
 
 
+def normalise_companies(company_list, database):
+    normalise(company_list, database, category="companies")
+
+
+def normalise_products(product_list, database):
+    normalise(product_list, database, category="products")
+
+
+def normalise_locations(location_list, database):
+    normalise(location_list, database, category="locations")
+
+
 def normalise_ids(id_list, database):
     # If category not in database, raise ValueError
     if "serial numbers" not in database.keys():
@@ -94,17 +108,7 @@ def normalise_ids(id_list, database):
             print(item, "has been added to the serial numbers database")
 
 
-
-def normalise_companies(company_list, database):
-    normalise(company_list, database, category="companies")
-
-
-def normalise_products(product_list, database):
-    normalise(product_list, database, category="products")
-
-
-def normalise_locations(location_list, database):
-    normalise(location_list, database, category="locations")
+def normalise_dirs(dir_list,  database):
 
 
 if __name__ == "__main__":
