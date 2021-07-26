@@ -1,8 +1,9 @@
-from googlesearch import search
 import pprint
-from fuzzywuzzy import fuzz, process
 import re
 
+from fuzzywuzzy import fuzz, process
+from googlesearch import search
+from googletrans import Translator
 
 
 def init_database(categories: list) -> dict:
@@ -58,44 +59,89 @@ def normalise(entity_list: list, database: dict, category: str = "companies") ->
     if category not in database.keys():
         raise ValueError("Category of", category, "not in database!")
 
+    # Init the Google API translator
+    translator = Translator()
+    # Translate entity_list to english text
+    translation = translator.translate(entity_list, dest="en")
+
+    # If API limit reached
+    for trans in translation:
+        if str(trans._response) == "<Response [429 Too Many Requests]>":
+            print("WARNING: Too Many Requests to Google Translator API. Translation functionality deactivated.")
+
     # Else...
-    for item in entity_list:
+    for item in translation:
         # If category is empty, create a database entry with first Wikipedia candidate
         if not bool(database[category].keys()):
-            candidates = wikify(item)
-            database[category][item] = candidates[0]
-            print(item, "has been added to the", category, "database with value:", candidates[0])
+            candidates = wikify(item.text)
+            database[category][item.text] = candidates[0]
+            print(f"{item.origin} [{item.src}] ({item.text}, [{item.dest}]) "
+                  f"has been added to the {category} database with value: {candidates[0]}")
         else:  # If category is not empty
             for key in database[category].keys():
                 # Check if company is in database under different name
-                if item.lower() in key.lower() or key.lower() in item.lower():
-                    database[category][item] = database[category][key]
-                    print(item, "is in the", category, "database under different name:", key)
+                if item.text.lower() in key.lower() or key.lower() in item.text.lower():
+                    # Add repeated occurrence as new key, but pointing to same entity value
+                    database[category][item.text] = database[category][key]
+                    print(f"{item.origin} [{item.src}] ({item.text}, [{item.dest}]) "
+                          f"is in the {category} under different name: {key} ({database[category][key]})")
                     break
                 # Check if company is in database under same name
-                elif item == key:
-                    print(item, "is already in the", category, "database")
+                elif item.text == key:
+                    print(f"{item.origin} [{item.src}] ({item.text}, [{item.dest}]) "
+                          f"is already in the {category} database")
                     break
             # If not in database, create a database entry with first Wikipedia candidate
-            if item not in database[category].keys():
-                candidates = wikify(item)
-                database[category][item] = candidates[0]
-                print(item, "has been added to the", category, "database with value:", candidates[0])
+            if item.text not in database[category].keys():
+                candidates = wikify(item.text)
+                database[category][item.text] = candidates[0]
+                print(f"{item.origin} [{item.src}] ({item.text}, [{item.dest}]) "
+                      f"has been added to the {category} database with value: {candidates[0]}")
+
+
+def group_by_value(database):
+    reversed_database = {}
+    for key in database.keys():
+        # If category is empty, create an entry with first database item
+        if not bool(reversed_database.keys()):
+            val = database[key]
+            reversed_database[val] = [key]
+        else:  # If category is not empty...
+            val = database[key]
+            # ...check if entity is already in category
+            if val in reversed_database.keys():
+                # If instance of entity is NOT already in the list
+                if key not in reversed_database[val]:
+                    reversed_database[val].append(key)
+            #  if entity is not already in category
+            else:
+                reversed_database[val] = [key]
+    return reversed_database
 
 
 def normalise_companies(company_list, database):
+    # Part 1 - link each entity to its respective Wikipedia entry separately
     normalise(company_list, database, category="companies")
+    # Part 2 - group entities by their Wikipedia entries
+    database["companies"] = group_by_value(database["companies"])
 
 
 def normalise_products(product_list, database):
+    # Part 1 - link each entity to its respective Wikipedia entry separately
     normalise(product_list, database, category="products")
+    # Part 2 - group entities by their Wikipedia entries
+    database["products"] = group_by_value(database["products"])
 
 
 def normalise_locations(location_list, database):
+    # Part 1 - link each entity to its respective Wikipedia entry separately
     normalise(location_list, database, category="locations")
+    # Part 2 - group entities by their Wikipedia entries
+    database["locations"] = group_by_value(database["locations"])
 
 
 def normalise_ids(id_list, database):
+    # Parts 1 & 2 combined
     # If category not in database, raise ValueError
     if "serial numbers" not in database.keys():
         raise ValueError('Category of "serial numbers" not in database!')
@@ -103,15 +149,16 @@ def normalise_ids(id_list, database):
     for item in id_list:
         # Unify format with regex - substitute special characters with hyphen and capitalize
         id_formatted = re.sub('[^0-9a-zA-Z]+', '-', item).upper()
-
         if id_formatted in database["serial numbers"].keys():
-            print(item, "is already in the serial numbers database")
+            database["serial numbers"][id_formatted].append(item)
+            print(item, "is already in the serial numbers database as", id_formatted)
         else:
-            database["serial numbers"][id_formatted] = []
-            print(item, "has been added to the serial numbers database as", id_formatted)
+            database["serial numbers"][id_formatted] = [item]
+            print(item, "has been added to the serial numbers database under key", id_formatted)
 
 
 def normalise_address(address_list,  database, threshold=90):
+    # Part 1 & 2 combined
     # If category not in database, raise ValueError
     if "addresses" not in database.keys():
         raise ValueError('Category of "addresses" not in database!')
@@ -120,6 +167,7 @@ def normalise_address(address_list,  database, threshold=90):
         if bool(database["addresses"].keys()):
             candidate, similarity = process.extractOne(item, database["addresses"].keys(), scorer=fuzz.token_set_ratio)
             if similarity > threshold:
+                database["addresses"][candidate].append(item)
                 print(item, "is already in the addresses database with the following key:", candidate)
                 continue
 
@@ -131,10 +179,10 @@ def normalise_address(address_list,  database, threshold=90):
 
 if __name__ == "__main__":
     company_list = ["NVIDIA", "Microsoft Corp", "Nvidia Ireland", "M&S Ltd"]
-    product_list = ["Plastic bottle", "Hardwood Table", "Transistor", "Carburetor", "Tanker"]
-    location_list = ["London", "Hong Kong", "Beijing", "Barcelona", "San Francisco", "Cape Town"]
+    product_list = ["Plastic bottle", "Botella de plastico", "Пластиковая бутылка", "塑料瓶", "Transistor", "ट्रांजिस्टर", "Tanker"]
+    location_list = ["London", "लंडन", "London, Eng", "Beijing", "北京", "Пекин"]
     # Assuming 'XYZ 13423 / ILD' and 'XYZ-13423-ILD' are the same
-    ids = ['XYZ 13423 / ILD', 'ABC/ICL/20891NC', 'LZ548/G', 'XYZ-13423-ILD']
+    ids = ['XYZ 13423 / ILD', 'ABC/ICL/20891NC', 'LZ548/G', 'XYZ--13423-ILD', 'ABC-ICL 20891NC', 'ABC--ICL//20891NC']
     addresses = ["44 CHINA Rd, London", "SLOUGH SE12 2XY", "44, CHINA Rd Hong Kong", "33 TIMBER YARD, LONDON, L1 8XY", "44 CHINA ROAD, KOWLOON, HONG KONG"]
 
     database = init_database(["companies", "products", "locations", "serial numbers", "addresses"])
