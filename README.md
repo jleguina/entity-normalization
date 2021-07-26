@@ -27,8 +27,9 @@ To set up this project:
   ```
 
 2. Create a suitable virtual environment and install dependencies:
-   * With `conda`:
+    * With `conda`:
        ```shell
+       cd entity-normalization
        conda env create -f environment.yml
        conda activate entity-norm37
        ```
