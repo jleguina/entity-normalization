@@ -48,10 +48,10 @@ def wikify(query: str, N_candidates: int = 1, threshold: int = 20) -> list:
     return wikis
 
 
-def normalise(entity_list: list, database: dict, category: str = "companies") -> None:
+def normalise(entity: str, database: dict, category: str = "companies") -> None:
     """
     Normalise links a set of entities to their respective (approximate) Wikipedia articles
-    :param entity_list: list of entities to be linked
+    :param entity: list of entities to be linked
     :param database: dictionary containing known entities and their Wikipedia instances
     :param category: category in database to which items in entity_list belong to
     """
@@ -59,44 +59,40 @@ def normalise(entity_list: list, database: dict, category: str = "companies") ->
     if category not in database.keys():
         raise ValueError("Category of", category, "not in database!")
 
-    # Init the Google API translator
-    translator = Translator()
     # Translate entity_list to english text
-    translation = translator.translate(entity_list, dest="en")
+    translation = translator.translate(entity, dest="en")
 
     # If API limit reached
-    for trans in translation:
-        if str(trans._response) == "<Response [429 Too Many Requests]>":
-            print("WARNING: Too Many Requests to Google Translator API. Translation functionality deactivated.")
+    if str(translation._response) == "<Response [429 Too Many Requests]>":
+        print("WARNING: Too Many Requests to Google Translator API. Translation functionality deactivated.")
 
     # Else...
-    for item in translation:
-        # If category is empty, create a database entry with first Wikipedia candidate
-        if not bool(database[category].keys()):
-            candidates = wikify(item.text)
-            database[category][item.text] = candidates[0]
-            print(f"{item.origin} [{item.src}] ({item.text}, [{item.dest}]) "
+    # If category is empty, create a database entry with first Wikipedia candidate
+    if not bool(database[category].keys()):
+        candidates = wikify(translation.text)
+        database[category][translation.text] = candidates[0]
+        print(f"{translation.origin} [{translation.src}] ({translation.text}, [{translation.dest}]) "
+              f"has been added to the {category} database with value: {candidates[0]}")
+    else:  # If category is not empty
+        for key in database[category].keys():
+            # Check if company is in database under different name
+            if translation.text.lower() in key.lower() or key.lower() in translation.text.lower():
+                # Add repeated occurrence as new key, but pointing to same entity value
+                database[category][translation.text] = database[category][key]
+                print(f"{translation.origin} [{translation.src}] ({translation.text}, [{translation.dest}]) "
+                      f"is in the {category} database under different name: {key} ({database[category][key]})")
+                break
+            # Check if company is in database under same name
+            elif translation.text == key:
+                print(f"{translation.origin} [{translation.src}] ({translation.text}, [{translation.dest}]) "
+                      f"is already in the {category} database")
+                break
+        # If not in database, create a database entry with first Wikipedia candidate
+        if translation.text not in database[category].keys():
+            candidates = wikify(translation.text)
+            database[category][translation.text] = candidates[0]
+            print(f"{translation.origin} [{translation.src}] ({translation.text}, [{translation.dest}]) "
                   f"has been added to the {category} database with value: {candidates[0]}")
-        else:  # If category is not empty
-            for key in database[category].keys():
-                # Check if company is in database under different name
-                if item.text.lower() in key.lower() or key.lower() in item.text.lower():
-                    # Add repeated occurrence as new key, but pointing to same entity value
-                    database[category][item.text] = database[category][key]
-                    print(f"{item.origin} [{item.src}] ({item.text}, [{item.dest}]) "
-                          f"is in the {category} under different name: {key} ({database[category][key]})")
-                    break
-                # Check if company is in database under same name
-                elif item.text == key:
-                    print(f"{item.origin} [{item.src}] ({item.text}, [{item.dest}]) "
-                          f"is already in the {category} database")
-                    break
-            # If not in database, create a database entry with first Wikipedia candidate
-            if item.text not in database[category].keys():
-                candidates = wikify(item.text)
-                database[category][item.text] = candidates[0]
-                print(f"{item.origin} [{item.src}] ({item.text}, [{item.dest}]) "
-                      f"has been added to the {category} database with value: {candidates[0]}")
 
 
 def group_by_value(database):
@@ -121,21 +117,24 @@ def group_by_value(database):
 
 def normalise_companies(company_list, database):
     # Part 1 - link each entity to its respective Wikipedia entry separately
-    normalise(company_list, database, category="companies")
+    for company in company_list:
+        normalise(company, database, category="companies")
     # Part 2 - group entities by their Wikipedia entries
     database["companies"] = group_by_value(database["companies"])
 
 
 def normalise_products(product_list, database):
     # Part 1 - link each entity to its respective Wikipedia entry separately
-    normalise(product_list, database, category="products")
+    for product in product_list:
+        normalise(product, database, category="products")
     # Part 2 - group entities by their Wikipedia entries
     database["products"] = group_by_value(database["products"])
 
 
 def normalise_locations(location_list, database):
     # Part 1 - link each entity to its respective Wikipedia entry separately
-    normalise(location_list, database, category="locations")
+    for location in location_list:
+        normalise(location, database, category="locations")
     # Part 2 - group entities by their Wikipedia entries
     database["locations"] = group_by_value(database["locations"])
 
@@ -178,6 +177,9 @@ def normalise_address(address_list,  database, threshold=90):
 
 
 if __name__ == "__main__":
+    # Init the Google API translator
+    translator = Translator()
+
     company_list = ["NVIDIA", "Microsoft Corp", "Nvidia Ireland", "M&S Ltd"]
     product_list = ["Plastic bottle", "Botella de plastico", "Пластиковая бутылка", "塑料瓶", "Transistor", "ट्रांजिस्टर", "Tanker"]
     location_list = ["London", "लंडन", "London, Eng", "Beijing", "北京", "Пекин"]
