@@ -44,4 +44,3 @@ dependencies:
     - sniffio==1.2.0
     - soupsieve==2.2.1
     - urllib3==1.26.6
-prefix: /home/javier/miniconda3/envs/test37
