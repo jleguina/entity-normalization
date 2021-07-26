@@ -1,5 +1,8 @@
 from googlesearch import search
 import pprint
+from fuzzywuzzy import fuzz, process
+import re
+
 
 
 def init_database(categories: list) -> dict:
@@ -61,7 +64,7 @@ def normalise(entity_list: list, database: dict, category: str = "companies") ->
         if not bool(database[category].keys()):
             candidates = wikify(item)
             database[category][item] = candidates[0]
-            print(item, "has been added to the", category, "database")
+            print(item, "has been added to the", category, "database with value:", candidates[0])
         else:  # If category is not empty
             for key in database[category].keys():
                 # Check if company is in database under different name
@@ -77,7 +80,7 @@ def normalise(entity_list: list, database: dict, category: str = "companies") ->
             if item not in database[category].keys():
                 candidates = wikify(item)
                 database[category][item] = candidates[0]
-                print(item, "has been added to the", category, "database")
+                print(item, "has been added to the", category, "database with value:", candidates[0])
 
 
 def normalise_companies(company_list, database):
@@ -98,38 +101,58 @@ def normalise_ids(id_list, database):
         raise ValueError('Category of "serial numbers" not in database!')
 
     for item in id_list:
-        # Unify format
-        id_formatted = item.replace(' ', '').upper()
+        # Unify format with regex - substitute special characters with hyphen and capitalize
+        id_formatted = re.sub('[^0-9a-zA-Z]+', '-', item).upper()
 
         if id_formatted in database["serial numbers"].keys():
             print(item, "is already in the serial numbers database")
         else:
-            database["serial numbers"][item] = []
-            print(item, "has been added to the serial numbers database")
+            database["serial numbers"][id_formatted] = []
+            print(item, "has been added to the serial numbers database as", id_formatted)
 
 
-def normalise_dirs(dir_list,  database):
+def normalise_address(address_list,  database, threshold=90):
+    # If category not in database, raise ValueError
+    if "addresses" not in database.keys():
+        raise ValueError('Category of "addresses" not in database!')
+
+    for item in address_list:
+        if bool(database["addresses"].keys()):
+            candidate, similarity = process.extractOne(item, database["addresses"].keys(), scorer=fuzz.token_set_ratio)
+            if similarity > threshold:
+                print(item, "is already in the addresses database with the following key:", candidate)
+                continue
+
+        address_formatted = item.upper()
+        database["addresses"][address_formatted] = []
+        print(item, "has been added to the serial numbers database as:", address_formatted)
+
 
 
 if __name__ == "__main__":
     company_list = ["NVIDIA", "Microsoft Corp", "Nvidia Ireland", "M&S Ltd"]
-    product_list = ["Plastic bottle", "Hardwood Table", "Transistor", "Computer", "Container"]
+    product_list = ["Plastic bottle", "Hardwood Table", "Transistor", "Carburetor", "Tanker"]
     location_list = ["London", "Hong Kong", "Beijing", "Barcelona", "San Francisco", "Cape Town"]
-    # Assuming 'XYZ 13423 / ILD' and 'XYZ-13423-ILD' are different, since formatting of serial numbers is crucial
-    # and can represent multiple product specifications
+    # Assuming 'XYZ 13423 / ILD' and 'XYZ-13423-ILD' are the same
     ids = ['XYZ 13423 / ILD', 'ABC/ICL/20891NC', 'LZ548/G', 'XYZ-13423-ILD']
+    addresses = ["44 CHINA Rd, London", "SLOUGH SE12 2XY", "44, CHINA Rd Hong Kong", "33 TIMBER YARD, LONDON, L1 8XY", "44 CHINA ROAD, KOWLOON, HONG KONG"]
 
-    database = init_database(["companies", "products", "locations", "serial numbers"])
+    database = init_database(["companies", "products", "locations", "serial numbers", "addresses"])
 
+    print(30*"*", "COMPANIES", 30*"*")
+    normalise_companies(company_list, database)
+
+    print(30 * "*", "PRODUCTS", 30 * "*")
+    normalise_products(product_list, database)
+
+    print(30 * "*", "LOCATIONS", 30 * "*")
+    normalise_locations(location_list, database)
+
+    print(30 * "*", "SERIAL NUMBERS", 30 * "*")
     normalise_ids(ids, database)
 
-    # print(30*"*", "COMPANIES", 30*"*")
-    # normalise_companies(company_list, database)
+    print(30 * "*", "ADDRESSES", 30 * "*")
+    normalise_address(addresses, database)
 
-    # print(30 * "*", "PRODUCTS", 30 * "*")
-    # normalise_products(product_list, database)
-
-    # print(30 * "*", "LOCATIONS", 30 * "*")
-    # normalise_locations(location_list, database)
-
+    print(30 * "*", "DATABASE", 30 * "*")
     pprint.pprint(database)
